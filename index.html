@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Food & Fasting Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg: #f7f7f5;
+      --card: #ffffff;
+      --text: #222;
+      --muted: #666;
+      --border: #ddd;
+      --accent: #2f6f4e;
+      --danger: #a33;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.4;
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+    h1, h2, h3 { margin: 0 0 12px; }
+    h1 { font-size: 1.7rem; }
+    h2 { font-size: 1.2rem; }
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+    }
+    .metric {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: #fbfbfa;
+    }
+    .metric .label {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .metric .value {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      font: inherit;
+      background: white;
+    }
+    button {
+      border: none;
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+      font-weight: 650;
+    }
+    button.secondary { background: #555; }
+    button.danger { background: var(--danger); }
+    button.ghost {
+      background: white;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+    .row-actions {
+      display: flex;
+      gap: 8px;
+      min-width: 220px;
+      flex-wrap: wrap;
+    }
+    .row-actions button { padding: 8px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-size: 0.85rem; }
+    .muted { color: var(--muted); }
+    .notice {
+      padding: 10px;
+      border-radius: 10px;
+      background: #eef7f1;
+      color: #234c34;
+      margin-bottom: 12px;
+      display: none;
+    }
+    .auth-box {
+      max-width: 520px;
+      margin: 40px auto;
+    }
+    .hidden { display: none; }
+    @media (max-width: 680px) {
+      .topbar { align-items: flex-start; flex-direction: column; }
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tr { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; padding: 8px; }
+      td { border-bottom: none; padding: 5px; }
+      td::before { content: attr(data-label) ": "; font-weight: 700; color: var(--muted); }
+      .row-actions { margin-top: 8px; }
+      .row-actions button { width: auto; flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="topbar">
+      <div>
+        <h1>Food & Fasting Tracker</h1>
+        <div class="muted">Simple daily logging for timing, calories, fasting and food patterns.</div>
+      </div>
+      <button id="logoutBtn" class="secondary hidden" type="button">Logout</button>
+    </div>
+
+    <section id="authSection" class="auth-box">
+      <h2>Login / Sign Up</h2>
+      <p class="muted">Use email and password. Your logs are separated by user account.</p>
+      <div id="authNotice" class="notice"></div>
+      <div class="form-grid">
+        <div>
+          <label for="authEmail">Email</label>
+          <input id="authEmail" type="email" placeholder="you@example.com" />
+        </div>
+        <div>
+          <label for="authPassword">Password</label>
+          <input id="authPassword" type="password" placeholder="Minimum 6 characters" />
+        </div>
+        <button id="loginBtn" type="button">Login</button>
+        <button id="signupBtn" class="ghost" type="button">Sign Up</button>
+      </div>
+    </section>
+
+    <div id="appSection" class="hidden">
+      <section>
+        <h2>Dashboard</h2>
+        <div class="grid">
+          <div class="metric"><div class="label">Today Calories</div><div id="todayCalories" class="value">0</div></div>
+          <div class="metric"><div class="label">Current Fast</div><div id="currentFast" class="value">0h</div></div>
+          <div class="metric"><div class="label">Last Intake</div><div id="lastIntake" class="value">-</div></div>
+          <div class="metric"><div class="label">7-Day Avg Calories</div><div id="avgCalories" class="value">0</div></div>
+          <div class="metric"><div class="label">7-Day Avg Eating Window</div><div id="avgWindow" class="value">0h</div></div>
+          <div class="metric"><div class="label">Late Eating Count</div><div id="lateEating" class="value">0</div></div>
+          <div class="metric"><div class="label">Top Source (7d)</div><div id="topSource" class="value">-</div></div>
+          <div class="metric"><div class="label">Large/Extra Items (7d)</div><div id="largeItems" class="value">0</div></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Add / Edit Entry</h2>
+        <div id="entryNotice" class="notice"></div>
+        <input type="hidden" id="editLogId" />
+        <input type="hidden" id="entryDefaultItemId" />
+        <div class="form-grid">
+          <div>
+            <label for="defaultSelect">Default item</label>
+            <select id="defaultSelect">
+              <option value="">Choose saved item...</option>
+            </select>
+          </div>
+          <div>
+            <label for="itemName">Item</label>
+            <input id="itemName" placeholder="e.g. Chicken rice" />
+          </div>
+          <div>
+            <label for="category">Category</label>
+            <select id="category">
+              <option value="food">Food</option>
+              <option value="drink">Drink</option>
+              <option value="snack">Snack</option>
+            </select>
+          </div>
+          <div>
+            <label for="amount">Amount</label>
+            <input id="amount" placeholder="e.g. 1 plate, 250ml" />
+          </div>
+          <div>
+            <label for="calories">Calories</label>
+            <input id="calories" type="number" min="0" placeholder="Estimated" />
+          </div>
+          <div>
+            <label for="volumeLevel">Volume</label>
+            <select id="volumeLevel">
+              <option value="normal">Normal</option>
+              <option value="small">Small</option>
+              <option value="large">Large</option>
+              <option value="extra">Extra</option>
+              <option value="shared">Shared</option>
+              <option value="tasting">Tasting</option>
+            </select>
+          </div>
+          <div>
+            <label for="sourceName">Source / Shop / Location</label>
+            <input id="sourceName" placeholder="e.g. Home, Koufu, McDonald’s" />
+          </div>
+          <div>
+            <label for="sourceType">Source Type</label>
+            <select id="sourceType">
+              <option value="">Not specified</option>
+              <option value="home">Home</option>
+              <option value="school">School</option>
+              <option value="office">Office</option>
+              <option value="food court">Food court</option>
+              <option value="restaurant">Restaurant</option>
+              <option value="cafe">Cafe</option>
+              <option value="delivery">Delivery</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label for="calorieConfidence">Calorie Confidence</label>
+            <select id="calorieConfidence">
+              <option value="estimate">Estimate</option>
+              <option value="exact">Exact</option>
+              <option value="rough">Rough</option>
+            </select>
+          </div>
+          <div>
+            <label for="timeMode">Time</label>
+            <select id="timeMode">
+              <option value="now">Use current time</option>
+              <option value="manual">Manual time</option>
+            </select>
+          </div>
+          <div id="manualTimeWrap" class="hidden">
+            <label for="manualTime">Manual date/time</label>
+            <input id="manualTime" type="datetime-local" />
+          </div>
+          <button id="submitEntryBtn" type="button">Add Entry</button>
+          <button id="cancelEditBtn" class="secondary hidden" type="button">Cancel Edit</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Daily Log</h2>
+        <p class="muted">Shows today by default. Use edit to correct item, calories or time.</p>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th><th>Item</th><th>Category</th><th>Volume</th><th>Source</th><th>Amount</th><th>Calories</th><th>Confidence</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="logTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Admin</h2>
+        <h3>Default Items</h3>
+        <div id="defaultNotice" class="notice"></div>
+        <input type="hidden" id="editDefaultId" />
+        <div class="form-grid">
+          <div>
+            <label for="defaultName">Name</label>
+            <input id="defaultName" placeholder="e.g. Kopi C kosong" />
+          </div>
+          <div>
+            <label for="defaultCategory">Category</label>
+            <select id="defaultCategory">
+              <option value="food">Food</option>
+              <option value="drink">Drink</option>
+              <option value="snack">Snack</option>
+            </select>
+          </div>
+          <div>
+            <label for="defaultAmount">Amount</label>
+            <input id="defaultAmount" placeholder="e.g. 1 cup" />
+          </div>
+          <div>
+            <label for="defaultCalories">Calories</label>
+            <input id="defaultCalories" type="number" min="0" />
+          </div>
+          <div>
+            <label for="defaultConfidence">Default Calorie Confidence</label>
+            <select id="defaultConfidence">
+              <option value="estimate">Estimate</option>
+              <option value="exact">Exact</option>
+              <option value="rough">Rough</option>
+            </select>
+          </div>
+          <div>
+            <label for="defaultNotes">Notes</label>
+            <input id="defaultNotes" placeholder="Optional notes or source of estimate" />
+          </div>
+          <button id="saveDefaultBtn" type="button">Save Default</button>
+          <button id="cancelDefaultEditBtn" class="secondary hidden" type="button">Cancel Default Edit</button>
+          <button id="exportCsvBtn" class="ghost" type="button">Export Logs CSV</button>
+        </div>
+        
+        <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
+          <h3>Retroactively Update Calories</h3>
+          <p class="muted">Use this after correcting a saved item’s calories. It updates past logs linked to that item to use the latest default calories, category, amount and confidence.</p>
+          <div class="form-grid">
+            <div>
+              <label for="retroItemSelect">Item to update</label>
+              <select id="retroItemSelect"><option value="">Choose item...</option></select>
+            </div>
+            <button id="retroUpdateBtn" class="ghost" type="button">Update Past Logs</button>
+          </div>
+        </div>
+
+        <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
+          <h3>Merge Duplicate Items</h3>
+          <p class="muted">Use this when you have duplicates like “Chicken rice”, “Chicken Rice”, and “chicken rice stall”. Past logs linked to the duplicate will be moved to the item you keep.</p>
+          <div class="form-grid">
+            <div>
+              <label for="mergeSourceSelect">Replace this duplicate</label>
+              <select id="mergeSourceSelect"><option value="">Choose item to merge...</option></select>
+            </div>
+            <div>
+              <label for="mergeTargetSelect">With this item to keep</label>
+              <select id="mergeTargetSelect"><option value="">Choose item to keep...</option></select>
+            </div>
+            <button id="mergeItemsBtn" class="danger" type="button">Merge Items</button>
+          </div>
+        </div>
+        <table style="margin-top:12px;">
+          <thead><tr><th>Name</th><th>Category</th><th>Amount</th><th>Calories</th><th>Confidence</th><th>Actions</th></tr></thead>
+          <tbody id="defaultTableBody"></tbody>
+        </table>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    // 1) Replace these with your Supabase project values.
+    const SUPABASE_URL = "YOUR_SUPABASE_URL";
+    const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let currentUser = null;
+    let todayLogs = [];
+    let sevenDayLogs = [];
+    let defaultItems = [];
+
+    const $ = (id) => document.getElementById(id);
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      wireEvents();
+      setManualTimeToNow();
+      await initialiseSession();
+      setInterval(refreshDashboardOnly, 60_000);
+    });
+
+    function wireEvents() {
+      $("loginBtn").addEventListener("click", login);
+      $("signupBtn").addEventListener("click", signup);
+      $("logoutBtn").addEventListener("click", logout);
+      $("timeMode").addEventListener("change", toggleManualTime);
+      $("submitEntryBtn").addEventListener("click", submitEntry);
+      $("cancelEditBtn").addEventListener("click", resetEntryForm);
+      $("defaultSelect").addEventListener("change", applyDefaultItem);
+      $("itemName").addEventListener("input", () => { if ($("defaultSelect").value) { $("entryDefaultItemId").value = ""; $("defaultSelect").value = ""; } });
+      $("saveDefaultBtn").addEventListener("click", saveDefaultItem);
+      $("cancelDefaultEditBtn").addEventListener("click", resetDefaultForm);
+      $("mergeItemsBtn").addEventListener("click", mergeDefaultItems);
+      $("retroUpdateBtn").addEventListener("click", retroUpdateLogsForSelectedItem);
+      $("exportCsvBtn").addEventListener("click", exportLogsCsv);
+    }
+
+    async function initialiseSession() {
+      const { data } = await supabaseClient.auth.getSession();
+      currentUser = data.session?.user || null;
+      renderAuthState();
+      if (currentUser) await refreshApp();
+    }
+
+    function renderAuthState() {
+      $("authSection").classList.toggle("hidden", !!currentUser);
+      $("appSection").classList.toggle("hidden", !currentUser);
+      $("logoutBtn").classList.toggle("hidden", !currentUser);
+    }
+
+    async function login() {
+      const email = $("authEmail").value.trim();
+      const password = $("authPassword").value;
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (error) return showNotice("authNotice", error.message);
+      currentUser = data.user;
+      renderAuthState();
+      await refreshApp();
+    }
+
+    async function signup() {
+      const email = $("authEmail").value.trim();
+      const password = $("authPassword").value;
+      const { data, error } = await supabaseClient.auth.signUp({ email, password });
+      if (error) return showNotice("authNotice", error.message);
+      currentUser = data.user;
+      showNotice("authNotice", "Account created. Check email if confirmation is enabled.");
+      renderAuthState();
+      if (currentUser) await refreshApp();
+    }
+
+    async function logout() {
+      await supabaseClient.auth.signOut();
+      currentUser = null;
+      todayLogs = [];
+      sevenDayLogs = [];
+      defaultItems = [];
+      renderAuthState();
+    }
+
+    async function refreshApp() {
+      if (!currentUser) return;
+      [todayLogs, sevenDayLogs, defaultItems] = await Promise.all([
+        loadTodayLogs(),
+        loadRecentLogs(7),
+        loadDefaultItems()
+      ]);
+      renderDashboard();
+      renderLogs();
+      renderDefaultItems();
+      renderDefaultDropdown();
+      renderMergeDropdowns();
+      renderRetroDropdown();
+      renderMergeDropdowns();
+    }
+
+    function refreshDashboardOnly() {
+      if (!currentUser) return;
+      renderDashboard();
+    }
+
+    async function loadTodayLogs() {
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const end = new Date(); end.setHours(23, 59, 59, 999);
+      const { data, error } = await supabaseClient
+        .from("consumption_logs")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .gte("consumed_at", start.toISOString())
+        .lte("consumed_at", end.toISOString())
+        .order("consumed_at", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    }
+
+    async function loadRecentLogs(days) {
+      const start = new Date();
+      start.setDate(start.getDate() - (days - 1));
+      start.setHours(0, 0, 0, 0);
+      const { data, error } = await supabaseClient
+        .from("consumption_logs")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .gte("consumed_at", start.toISOString())
+        .order("consumed_at", { ascending: true })
+        .limit(500);
+      if (error) throw error;
+      return data || [];
+    }
+
+    async function loadDefaultItems() {
+      const { data, error } = await supabaseClient
+        .from("default_items")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .order("name", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    }
+
+    function renderDashboard() {
+      const todaySummary = summariseDay(todayLogs);
+      const sevenSummary = summariseSevenDays(sevenDayLogs);
+      $("todayCalories").textContent = todaySummary.totalCalories;
+      $("currentFast").textContent = todaySummary.currentFastingHours + "h";
+      $("lastIntake").textContent = todaySummary.lastIntake ? formatTime(todaySummary.lastIntake) : "-";
+      $("avgCalories").textContent = sevenSummary.avgCalories;
+      $("avgWindow").textContent = sevenSummary.avgEatingWindow + "h";
+      $("lateEating").textContent = sevenSummary.lateEatingCount;
+      $("topSource").textContent = sevenSummary.topSource || "-";
+      $("largeItems").textContent = sevenSummary.largeItems;
+    }
+
+    function summariseDay(logs) {
+      const calorieLogs = logs.filter(log => Number(log.calories || 0) > 0);
+      const totalCalories = calorieLogs.reduce((sum, log) => sum + Number(log.calories || 0), 0);
+      const firstIntake = calorieLogs[0]?.consumed_at || null;
+      const lastIntake = calorieLogs[calorieLogs.length - 1]?.consumed_at || null;
+      return {
+        totalCalories,
+        firstIntake,
+        lastIntake,
+        eatingWindowHours: firstIntake && lastIntake ? hoursBetween(firstIntake, lastIntake) : "0.0",
+        currentFastingHours: lastIntake ? hoursBetween(lastIntake, new Date()) : "0.0"
+      };
+    }
+
+    function summariseSevenDays(logs) {
+      const grouped = groupByDate(logs);
+      const dates = lastNDates(7);
+      let totalCalories = 0;
+      let totalWindow = 0;
+      let windowDays = 0;
+      let lateEatingCount = 0;
+      let largeItems = 0;
+      const sourceCounts = {};
+
+      dates.forEach(dateKey => {
+        const dayLogs = grouped[dateKey] || [];
+        const summary = summariseDay(dayLogs);
+        totalCalories += summary.totalCalories;
+        if (Number(summary.eatingWindowHours) > 0) {
+          totalWindow += Number(summary.eatingWindowHours);
+          windowDays++;
+        }
+        lateEatingCount += dayLogs.filter(log => {
+          const h = new Date(log.consumed_at).getHours();
+          return h >= 21 && Number(log.calories || 0) > 0;
+        }).length;
+        largeItems += dayLogs.filter(log => ["large", "extra"].includes((log.volume_level || "").toLowerCase())).length;
+        dayLogs.forEach(log => {
+          const src = (log.source_name || "").trim();
+          if (src) sourceCounts[src] = (sourceCounts[src] || 0) + 1;
+        });
+      });
+
+      return {
+        avgCalories: Math.round(totalCalories / 7),
+        avgEatingWindow: windowDays ? (totalWindow / windowDays).toFixed(1) : "0.0",
+        lateEatingCount,
+        largeItems,
+        topSource: Object.entries(sourceCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || ""
+      };
+    }
+
+    function renderLogs() {
+      const body = $("logTableBody");
+      body.innerHTML = "";
+      if (!todayLogs.length) {
+        body.innerHTML = `<tr><td colspan="9" class="muted">No logs yet today.</td></tr>`;
+        return;
+      }
+      todayLogs.forEach(log => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td data-label="Time">${formatTime(log.consumed_at)}</td>
+          <td data-label="Item">${escapeHtml(log.item_name)}</td>
+          <td data-label="Category">${escapeHtml(log.category)}</td>
+          <td data-label="Volume">${escapeHtml(log.volume_level || "normal")}</td>
+          <td data-label="Source">${escapeHtml([log.source_name, log.source_type].filter(Boolean).join(" / "))}</td>
+          <td data-label="Amount">${escapeHtml(log.amount || "")}</td>
+          <td data-label="Calories">${Number(log.calories || 0)}</td>
+          <td data-label="Confidence">${escapeHtml(log.calorie_confidence || "estimate")}</td>
+          <td data-label="Actions">
+            <div class="row-actions">
+              <button type="button" class="ghost" data-edit-log="${log.id}">Edit</button>
+              <button type="button" class="danger" data-delete-log="${log.id}">Delete</button>
+            </div>
+          </td>`;
+        body.appendChild(tr);
+      });
+      body.querySelectorAll("[data-edit-log]").forEach(btn => btn.addEventListener("click", () => startEditLog(btn.dataset.editLog)));
+      body.querySelectorAll("[data-delete-log]").forEach(btn => btn.addEventListener("click", () => deleteLog(btn.dataset.deleteLog)));
+    }
+
+    async function submitEntry() {
+      const id = $("editLogId").value;
+      const entry = {
+        user_id: currentUser.id,
+        default_item_id: $("entryDefaultItemId").value || null,
+        item_name: $("itemName").value.trim(),
+        category: $("category").value,
+        amount: $("amount").value.trim(),
+        calories: Number($("calories").value || 0),
+        volume_level: $("volumeLevel").value,
+        source_name: $("sourceName").value.trim(),
+        source_type: $("sourceType").value,
+        calorie_confidence: $("calorieConfidence").value,
+        consumed_at: getSelectedTimeIso()
+      };
+      if (!entry.item_name) return showNotice("entryNotice", "Please enter an item name.");
+
+      const query = id
+        ? supabaseClient.from("consumption_logs").update(entry).eq("id", id).eq("user_id", currentUser.id)
+        : supabaseClient.from("consumption_logs").insert([entry]);
+      const { error } = await query;
+      if (error) return showNotice("entryNotice", error.message);
+      showNotice("entryNotice", id ? "Entry updated." : "Entry added.");
+      resetEntryForm();
+      await refreshApp();
+    }
+
+    function startEditLog(id) {
+      const log = todayLogs.find(l => l.id === id);
+      if (!log) return;
+      $("editLogId").value = log.id;
+      $("entryDefaultItemId").value = log.default_item_id || "";
+      $("itemName").value = log.item_name;
+      $("category").value = log.category;
+      $("amount").value = log.amount || "";
+      $("calories").value = log.calories || 0;
+      $("volumeLevel").value = log.volume_level || "normal";
+      $("sourceName").value = log.source_name || "";
+      $("sourceType").value = log.source_type || "";
+      $("calorieConfidence").value = log.calorie_confidence || "estimate";
+      $("timeMode").value = "manual";
+      $("manualTime").value = toDateTimeLocal(log.consumed_at);
+      toggleManualTime();
+      $("submitEntryBtn").textContent = "Update Entry";
+      $("cancelEditBtn").classList.remove("hidden");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    async function deleteLog(id) {
+      if (!confirm("Delete this log entry?")) return;
+      const { error } = await supabaseClient
+        .from("consumption_logs")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", currentUser.id);
+      if (error) return showNotice("entryNotice", error.message);
+      await refreshApp();
+    }
+
+    function resetEntryForm() {
+      $("editLogId").value = "";
+      $("entryDefaultItemId").value = "";
+      $("defaultSelect").value = "";
+      $("itemName").value = "";
+      $("category").value = "food";
+      $("amount").value = "";
+      $("calories").value = "";
+      $("volumeLevel").value = "normal";
+      $("sourceName").value = "";
+      $("sourceType").value = "";
+      $("calorieConfidence").value = "estimate";
+      $("timeMode").value = "now";
+      setManualTimeToNow();
+      toggleManualTime();
+      $("submitEntryBtn").textContent = "Add Entry";
+      $("cancelEditBtn").classList.add("hidden");
+    }
+
+    function applyDefaultItem() {
+      const item = defaultItems.find(i => i.id === $("defaultSelect").value);
+      if (!item) return;
+      $("entryDefaultItemId").value = item.id;
+      $("itemName").value = item.name;
+      $("category").value = item.category;
+      $("amount").value = item.default_amount || "";
+      $("calories").value = item.default_calories || 0;
+      $("calorieConfidence").value = item.calorie_confidence || "estimate";
+    }
+
+    async function saveDefaultItem() {
+      const id = $("editDefaultId").value;
+      const item = {
+        user_id: currentUser.id,
+        name: $("defaultName").value.trim(),
+        category: $("defaultCategory").value,
+        default_amount: $("defaultAmount").value.trim(),
+        default_calories: Number($("defaultCalories").value || 0),
+        calorie_confidence: $("defaultConfidence").value,
+        notes: $("defaultNotes").value.trim()
+      };
+      if (!item.name) return showNotice("defaultNotice", "Please enter a default item name.");
+      const query = id
+        ? supabaseClient.from("default_items").update(item).eq("id", id).eq("user_id", currentUser.id)
+        : supabaseClient.from("default_items").insert([item]);
+      const { error } = await query;
+      if (error) return showNotice("defaultNotice", error.message);
+      resetDefaultForm();
+      showNotice("defaultNotice", id ? "Default updated." : "Default saved.");
+      defaultItems = await loadDefaultItems();
+      renderDefaultItems();
+      renderDefaultDropdown();
+      renderMergeDropdowns();
+      renderRetroDropdown();
+    }
+
+    function renderDefaultItems() {
+      const body = $("defaultTableBody");
+      body.innerHTML = "";
+      if (!defaultItems.length) {
+        body.innerHTML = `<tr><td colspan="6" class="muted">No default items yet.</td></tr>`;
+        return;
+      }
+      defaultItems.forEach(item => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td data-label="Name">${escapeHtml(item.name)}</td>
+          <td data-label="Category">${escapeHtml(item.category)}</td>
+          <td data-label="Amount">${escapeHtml(item.default_amount || "")}</td>
+          <td data-label="Calories">${Number(item.default_calories || 0)}</td>
+          <td data-label="Confidence">${escapeHtml(item.calorie_confidence || "estimate")}</td>
+          <td data-label="Actions">
+            <div class="row-actions">
+              <button type="button" class="ghost" data-edit-default="${item.id}">Edit</button>
+              <button type="button" class="ghost" data-quick-merge="${item.id}">Merge</button>
+              <button type="button" class="danger" data-delete-default="${item.id}">Delete</button>
+            </div>
+          </td>`;
+        body.appendChild(tr);
+      });
+      body.querySelectorAll("[data-edit-default]").forEach(btn => btn.addEventListener("click", () => startEditDefault(btn.dataset.editDefault)));
+      body.querySelectorAll("[data-quick-merge]").forEach(btn => btn.addEventListener("click", () => startMergeDefault(btn.dataset.quickMerge)));
+      body.querySelectorAll("[data-delete-default]").forEach(btn => btn.addEventListener("click", () => deleteDefault(btn.dataset.deleteDefault)));
+    }
+
+    function renderDefaultDropdown() {
+      const select = $("defaultSelect");
+      select.innerHTML = `<option value="">Choose saved item...</option>`;
+      defaultItems.forEach(item => {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = `${item.name} (${item.default_calories || 0} cal)`;
+        select.appendChild(option);
+      });
+    }
+
+    function renderMergeDropdowns() {
+      const source = $("mergeSourceSelect");
+      const target = $("mergeTargetSelect");
+      if (!source || !target) return;
+      source.innerHTML = `<option value="">Choose item to merge...</option>`;
+      target.innerHTML = `<option value="">Choose item to keep...</option>`;
+      defaultItems.forEach(item => {
+        const label = `${item.name} (${item.default_calories || 0} cal)`;
+        const sourceOption = document.createElement("option");
+        sourceOption.value = item.id;
+        sourceOption.textContent = label;
+        source.appendChild(sourceOption);
+
+        const targetOption = document.createElement("option");
+        targetOption.value = item.id;
+        targetOption.textContent = label;
+        target.appendChild(targetOption);
+      });
+    }
+
+    function renderRetroDropdown() {
+      const select = $("retroItemSelect");
+      if (!select) return;
+      select.innerHTML = `<option value="">Choose item...</option>`;
+      defaultItems.forEach(item => {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = `${item.name} (${item.default_calories || 0} cal)`;
+        select.appendChild(option);
+      });
+    }
+
+    function startMergeDefault(id) {
+      $("mergeSourceSelect").value = id;
+      $("mergeTargetSelect").value = "";
+      $("mergeSourceSelect").scrollIntoView({ behavior: "smooth", block: "center" });
+      showNotice("defaultNotice", "Choose the item to keep, then press Merge Items.");
+    }
+
+    async function mergeDefaultItems() {
+      const sourceId = $("mergeSourceSelect").value;
+      const targetId = $("mergeTargetSelect").value;
+      if (!sourceId || !targetId) return showNotice("defaultNotice", "Choose both items to merge.");
+      if (sourceId === targetId) return showNotice("defaultNotice", "Choose two different items.");
+
+      const source = defaultItems.find(i => i.id === sourceId);
+      const target = defaultItems.find(i => i.id === targetId);
+      if (!source || !target) return showNotice("defaultNotice", "Could not find one of the selected items.");
+
+      const ok = confirm(`Merge “${source.name}” into “${target.name}”? Past linked logs will be moved to “${target.name}”.`);
+      if (!ok) return;
+
+      const { error: updateByIdError } = await supabaseClient
+        .from("consumption_logs")
+        .update({
+          default_item_id: target.id,
+          item_name: target.name,
+          category: target.category,
+          amount: target.default_amount || "",
+          calories: Number(target.default_calories || 0),
+          calorie_confidence: target.calorie_confidence || "estimate"
+        })
+        .eq("user_id", currentUser.id)
+        .eq("default_item_id", source.id);
+      if (updateByIdError) return showNotice("defaultNotice", updateByIdError.message);
+
+      // Safety net for older logs created before default_item_id existed.
+      const { error: updateByNameError } = await supabaseClient
+        .from("consumption_logs")
+        .update({
+          default_item_id: target.id,
+          item_name: target.name,
+          category: target.category,
+          amount: target.default_amount || "",
+          calories: Number(target.default_calories || 0),
+          calorie_confidence: target.calorie_confidence || "estimate"
+        })
+        .eq("user_id", currentUser.id)
+        .is("default_item_id", null)
+        .eq("item_name", source.name);
+      if (updateByNameError) return showNotice("defaultNotice", updateByNameError.message);
+
+      const { error: deleteError } = await supabaseClient
+        .from("default_items")
+        .delete()
+        .eq("id", source.id)
+        .eq("user_id", currentUser.id);
+      if (deleteError) return showNotice("defaultNotice", deleteError.message);
+
+      showNotice("defaultNotice", `Merged “${source.name}” into “${target.name}”.`);
+      $("mergeSourceSelect").value = "";
+      $("mergeTargetSelect").value = "";
+      await refreshApp();
+    }
+
+    function startEditDefault(id) {
+      const item = defaultItems.find(i => i.id === id);
+      if (!item) return;
+      $("editDefaultId").value = item.id;
+      $("defaultName").value = item.name;
+      $("defaultCategory").value = item.category;
+      $("defaultAmount").value = item.default_amount || "";
+      $("defaultCalories").value = item.default_calories || 0;
+      $("defaultConfidence").value = item.calorie_confidence || "estimate";
+      $("defaultNotes").value = item.notes || "";
+      $("saveDefaultBtn").textContent = "Update Default";
+      $("cancelDefaultEditBtn").classList.remove("hidden");
+    }
+
+    async function deleteDefault(id) {
+      if (!confirm("Delete this default item?")) return;
+      const { error } = await supabaseClient
+        .from("default_items")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", currentUser.id);
+      if (error) return showNotice("defaultNotice", error.message);
+      defaultItems = await loadDefaultItems();
+      renderDefaultItems();
+      renderDefaultDropdown();
+      renderMergeDropdowns();
+      renderRetroDropdown();
+    }
+
+    function resetDefaultForm() {
+      $("editDefaultId").value = "";
+      $("defaultName").value = "";
+      $("defaultCategory").value = "food";
+      $("defaultAmount").value = "";
+      $("defaultCalories").value = "";
+      $("defaultConfidence").value = "estimate";
+      $("defaultNotes").value = "";
+      $("saveDefaultBtn").textContent = "Save Default";
+      $("cancelDefaultEditBtn").classList.add("hidden");
+    }
+
+    async function retroUpdateLogsForSelectedItem() {
+      const itemId = $("retroItemSelect").value;
+      if (!itemId) return showNotice("defaultNotice", "Choose an item to update.");
+      const item = defaultItems.find(i => i.id === itemId);
+      if (!item) return showNotice("defaultNotice", "Could not find that item.");
+      const ok = confirm(`Update past logs for “${item.name}” to ${item.default_calories || 0} calories? This will overwrite calories, category, amount and confidence for linked logs.`);
+      if (!ok) return;
+
+      const { error: linkedError } = await supabaseClient
+        .from("consumption_logs")
+        .update({
+          item_name: item.name,
+          category: item.category,
+          amount: item.default_amount || "",
+          calories: Number(item.default_calories || 0),
+          calorie_confidence: item.calorie_confidence || "estimate"
+        })
+        .eq("user_id", currentUser.id)
+        .eq("default_item_id", item.id);
+      if (linkedError) return showNotice("defaultNotice", linkedError.message);
+
+      const { error: nameError } = await supabaseClient
+        .from("consumption_logs")
+        .update({
+          default_item_id: item.id,
+          item_name: item.name,
+          category: item.category,
+          amount: item.default_amount || "",
+          calories: Number(item.default_calories || 0),
+          calorie_confidence: item.calorie_confidence || "estimate"
+        })
+        .eq("user_id", currentUser.id)
+        .is("default_item_id", null)
+        .eq("item_name", item.name);
+      if (nameError) return showNotice("defaultNotice", nameError.message);
+
+      showNotice("defaultNotice", `Past logs for “${item.name}” updated.`);
+      await refreshApp();
+    }
+
+    async function exportLogsCsv() {
+      const { data, error } = await supabaseClient
+        .from("consumption_logs")
+        .select("consumed_at,item_name,category,amount,calories,volume_level,source_name,source_type,calorie_confidence,default_item_id")
+        .eq("user_id", currentUser.id)
+        .order("consumed_at", { ascending: false })
+        .limit(5000);
+      if (error) return showNotice("defaultNotice", error.message);
+      const rows = [["consumed_at", "item_name", "category", "amount", "calories", "volume_level", "source_name", "source_type", "calorie_confidence", "default_item_id"], ...data.map(r => [r.consumed_at, r.item_name, r.category, r.amount || "", r.calories || 0, r.volume_level || "", r.source_name || "", r.source_type || "", r.calorie_confidence || "", r.default_item_id || ""] )];
+      const csv = rows.map(row => row.map(cell => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "consumption_logs.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function toggleManualTime() {
+      $("manualTimeWrap").classList.toggle("hidden", $("timeMode").value !== "manual");
+    }
+
+    function getSelectedTimeIso() {
+      if ($("timeMode").value === "manual" && $("manualTime").value) {
+        return new Date($("manualTime").value).toISOString();
+      }
+      return new Date().toISOString();
+    }
+
+    function setManualTimeToNow() {
+      $("manualTime").value = toDateTimeLocal(new Date());
+    }
+
+    function formatTime(value) {
+      return new Date(value).toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function toDateTimeLocal(value) {
+      const date = new Date(value);
+      const offsetMs = date.getTimezoneOffset() * 60000;
+      return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+    }
+
+    function hoursBetween(start, end) {
+      return Math.max(0, (new Date(end) - new Date(start)) / 36e5).toFixed(1);
+    }
+
+    function groupByDate(logs) {
+      return logs.reduce((acc, log) => {
+        const key = new Date(log.consumed_at).toLocaleDateString("en-CA");
+        acc[key] = acc[key] || [];
+        acc[key].push(log);
+        return acc;
+      }, {});
+    }
+
+    function lastNDates(n) {
+      return Array.from({ length: n }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (n - 1 - i));
+        return d.toLocaleDateString("en-CA");
+      });
+    }
+
+    function showNotice(id, message) {
+      const el = $(id);
+      el.textContent = message;
+      el.style.display = "block";
+      setTimeout(() => { el.style.display = "none"; }, 3500);
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>'"]/g, tag => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+      }[tag]));
+    }
+  </script>
+</body>
+</html>
